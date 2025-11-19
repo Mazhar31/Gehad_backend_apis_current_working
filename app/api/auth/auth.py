@@ -112,7 +112,7 @@ async def forgot_password(email: str = Query(...)):
     firebase_db.create('password_resets', reset_data, f"reset-{uuid.uuid4().hex[:8]}")
     
     # Send email
-    reset_url = f"http://localhost:5173/reset-password?token={reset_token}"
+    reset_url = f"https://ai-kpi-dashboard.web.app/reset-password?token={reset_token}"
     await send_password_reset_email(email, reset_url)
     
     return ResponseModel(

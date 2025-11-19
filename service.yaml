@@ -1,0 +1,58 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: oneqlek-backend
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: "10"
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/memory: "1Gi"
+    spec:
+      containerConcurrency: 80
+      containers:
+      - image: gcr.io/ai-kpi-dashboard/oneqlek-backend
+        ports:
+        - containerPort: 8080
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://postgres:msp4kist4n@localhost:5432/oneqlek_db"
+        - name: SECRET_KEY
+          value: "your-super-secret-jwt-key-change-this-in-production-min-32-chars-12345"
+        - name: ENVIRONMENT
+          value: "production"
+        - name: DEBUG
+          value: "False"
+        - name: ALLOWED_ORIGINS
+          value: "https://ai-kpi-dashboard.web.app,https://ai-kpi-dashboard.firebaseapp.com"
+        - name: SMTP_HOST
+          value: "smtp.gmail.com"
+        - name: SMTP_PORT
+          value: "587"
+        - name: SMTP_USER
+          value: "mzrbutt31@gmail.com"
+        - name: SMTP_PASS
+          value: "htgv vqjp aqms ryvg"
+        - name: ADMIN_EMAIL
+          value: "mzrbutt31@gmail.com"
+        - name: FROM_EMAIL
+          value: "mzrbutt31@gmail.com"
+        - name: FIREBASE_PROJECT_ID
+          value: "ai-kpi-dashboard"
+        - name: FIREBASE_API_KEY
+          value: "AIzaSyB3DsTDhrnn1to-1SZ3c2Uls_hliwLQ1Fo"
+        - name: FIREBASE_AUTH_DOMAIN
+          value: "ai-kpi-dashboard.firebaseapp.com"
+        - name: FIREBASE_STORAGE_BUCKET
+          value: "ai-kpi-dashboard.firebasestorage.app"
+        - name: FIREBASE_MESSAGING_SENDER_ID
+          value: "334489433469"
+        - name: FIREBASE_APP_ID
+          value: "1:334489433469:web:b788d6f323c602994c0814"
+        resources:
+          limits:
+            cpu: "1"
+            memory: "1Gi"

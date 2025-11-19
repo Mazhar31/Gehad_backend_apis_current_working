@@ -28,13 +28,22 @@ app = FastAPI(
 )
 
 # CORS middleware
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=settings.allowed_origins_list,
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origins_list,
+    allow_origins=["*"],  # for demo — allows all
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Firebase handles file storage - no local directories needed
 
