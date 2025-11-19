@@ -76,6 +76,8 @@ async def update_user(
     
     if 'name' in user_data:
         update_data['name'] = user_data['name']
+    if 'email' in user_data:
+        update_data['email'] = user_data['email']
     if 'position' in user_data:
         update_data['position'] = user_data['position']
     if 'client_id' in user_data:

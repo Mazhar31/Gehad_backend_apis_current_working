@@ -17,5 +17,5 @@ COPY . .
 # Expose port
 EXPOSE 8080
 
-# Run the application
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+# Run the application with proxy headers support for Cloud Run
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --proxy-headers --forwarded-allow-ips='*'"]

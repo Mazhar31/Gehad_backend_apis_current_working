@@ -1,5 +1,8 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware import Middleware
 from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.api.auth.auth import router as auth_router
@@ -18,24 +21,23 @@ from app.api.v1.upload import router as upload_router
 from app.api.setup import router as setup_router
 import os
 
-# Create FastAPI app
+# Create FastAPI app with proxy headers support
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="OneQlek Backend API - Project Management and Client Dashboard System",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    redirect_slashes=False  # Prevent automatic trailing slash redirects
 )
 
-# CORS middleware
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=settings.allowed_origins_list,
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
+# Add TrustedHostMiddleware first to handle proxy headers
+app.add_middleware(
+    TrustedHostMiddleware, 
+    allowed_hosts=["*"]  # Allow all hosts for Cloud Run
+)
 
+# Add CORS middleware after TrustedHost
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # for demo — allows all
@@ -95,9 +97,17 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
+    # uvicorn.run(
+    #     "app.main:app",
+    #     host="0.0.0.0",
+    #     port=8000,
+    #     reload=settings.DEBUG
+    # )
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
         port=8000,
+        proxy_headers=True,
+        forwarded_allow_ips="*",
         reload=settings.DEBUG
     )

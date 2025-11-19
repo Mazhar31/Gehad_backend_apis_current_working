@@ -24,6 +24,11 @@ class AdminLogin(BaseModel):
     password: str
 
 
+class AdminPasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+
 class AdminResponse(AdminBase):
     id: str
     avatar_url: Optional[str] = None

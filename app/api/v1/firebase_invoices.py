@@ -3,6 +3,7 @@ from app.core.firebase_db import firebase_db
 from app.schemas.common import ResponseModel
 from app.utils.dependencies import get_current_admin
 from app.models import Admin
+from app.services.email_service import send_invoice_email
 from typing import Dict, Any
 import uuid
 
@@ -125,8 +126,25 @@ async def send_invoice(
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
     
-    # In a real implementation, you would send email here
-    # For now, just return success
+    # Get client details
+    client = firebase_db.get_by_id('clients', invoice.get('client_id'))
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    client_email = client.get('email')
+    if not client_email:
+        raise HTTPException(status_code=400, detail="Client email not found")
+    
+    # Send invoice email
+    email_sent = await send_invoice_email(
+        client_email=client_email,
+        client_name=client.get('company', 'Valued Client'),
+        invoice_data=invoice
+    )
+    
+    if not email_sent:
+        raise HTTPException(status_code=500, detail="Failed to send invoice email")
+    
     return ResponseModel(
-        message=f"Invoice {invoice.get('invoice_number')} sent successfully"
+        message=f"Invoice {invoice.get('invoice_number')} sent successfully to {client_email}"
     )

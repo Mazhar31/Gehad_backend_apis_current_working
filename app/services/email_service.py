@@ -102,9 +102,76 @@ class EmailService:
             logger.error(f"Failed to send password reset email: {str(e)}")
             return False
 
+    def send_invoice_email(self, client_email: str, client_name: str, invoice_data: dict):
+        """Send invoice email to client"""
+        try:
+            # Create message
+            msg = MIMEMultipart()
+            msg['From'] = self.from_email
+            msg['To'] = client_email
+            msg['Subject'] = f"Invoice {invoice_data.get('invoice_number')} - OneQlek"
+
+            # Calculate total
+            total = sum(item.get('price', 0) * item.get('quantity', 1) for item in invoice_data.get('items', []))
+            currency = invoice_data.get('currency', 'USD')
+            
+            # Format currency
+            currency_symbols = {'USD': '$', 'EUR': '€', 'GBP': '£', 'AED': 'د.إ'}
+            currency_symbol = currency_symbols.get(currency, currency)
+            
+            # Email body
+            body = f"""
+            <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                    <h2 style="color: #2563eb;">Invoice from OneQlek</h2>
+                    <p>Dear {client_name},</p>
+                    <p>Please find your invoice details below:</p>
+                    
+                    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                        <h3 style="margin-top: 0;">Invoice Details</h3>
+                        <p><strong>Invoice Number:</strong> {invoice_data.get('invoice_number')}</p>
+                        <p><strong>Issue Date:</strong> {invoice_data.get('issue_date')}</p>
+                        <p><strong>Due Date:</strong> {invoice_data.get('due_date')}</p>
+                        <p><strong>Status:</strong> {invoice_data.get('status')}</p>
+                        <p><strong>Total Amount:</strong> {currency_symbol}{total:.2f}</p>
+                    </div>
+                    
+                    <p>Please process this invoice by the due date. If you have any questions, please don't hesitate to contact us.</p>
+                    
+                    <p>Thank you for your business!</p>
+                    
+                    <hr style="margin: 30px 0;">
+                    <p><small>OneQlek Team<br>
+                    Email: {self.from_email}</small></p>
+                </div>
+            </body>
+            </html>
+            """
+
+            msg.attach(MIMEText(body, 'html'))
+
+            # Send email
+            server = smtplib.SMTP(self.smtp_host, self.smtp_port)
+            server.starttls()
+            server.login(self.smtp_user, self.smtp_pass)
+            text = msg.as_string()
+            server.sendmail(self.from_email, client_email, text)
+            server.quit()
+
+            logger.info(f"Invoice email sent successfully to {client_email}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to send invoice email: {str(e)}")
+            return False
+
 # Create global instance
 email_service = EmailService()
 
 # Helper function for easy import
 async def send_password_reset_email(email: str, reset_url: str):
     return email_service.send_password_reset_email(email, reset_url)
+
+async def send_invoice_email(client_email: str, client_name: str, invoice_data: dict):
+    return email_service.send_invoice_email(client_email, client_name, invoice_data)
