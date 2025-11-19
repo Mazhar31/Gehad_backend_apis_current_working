@@ -78,6 +78,7 @@ async def get_current_user_info(
         user_data["client_id"] = current_user.get('client_id')
         user_data["role"] = current_user.get('role')
         user_data["dashboard_access"] = current_user.get('dashboard_access')
+        user_data["project_ids"] = current_user.get('project_ids', [])
     
     return ResponseModel(
         data=user_data,

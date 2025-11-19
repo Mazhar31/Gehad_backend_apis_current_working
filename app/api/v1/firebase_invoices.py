@@ -148,3 +148,4 @@ async def send_invoice(
     return ResponseModel(
         message=f"Invoice {invoice.get('invoice_number')} sent successfully to {client_email}"
     )
+

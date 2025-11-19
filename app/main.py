@@ -12,6 +12,7 @@ from app.api.v1.firebase_clients import router as clients_router
 from app.api.v1.firebase_projects import router as projects_router
 from app.api.v1.firebase_users import router as users_router
 from app.api.v1.firebase_invoices import router as invoices_router
+from app.api.v1.user_profile import router as user_profile_router
 
 from app.api.v1.firebase_payment_plans import router as payment_plans_router
 from app.api.v1.firebase_organization import router as organization_router_firebase
@@ -56,6 +57,7 @@ app.include_router(firebase_admin_router, prefix="/api/admin/firebase", tags=["F
 app.include_router(clients_router, prefix="/api/admin/clients", tags=["Clients"])
 app.include_router(projects_router, prefix="/api/admin/projects", tags=["Projects"])
 app.include_router(users_router, prefix="/api/admin/users", tags=["Users"])
+app.include_router(user_profile_router, prefix="/api/users", tags=["User Profile"])
 app.include_router(invoices_router, prefix="/api/admin/invoices", tags=["Invoices"])
 app.include_router(organization_router_firebase, prefix="/api/admin", tags=["Organization"])
 app.include_router(payment_plans_router, prefix="/api/admin/payment-plans", tags=["Payment Plans"])

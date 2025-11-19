@@ -60,6 +60,34 @@ class FirebaseStorageService:
             logger.error(f"Failed to upload file {file_path}: {e}")
             raise e
     
+    async def upload_avatar(self, file: UploadFile, user_id: str) -> str:
+        """Upload user avatar file to Firebase Storage"""
+        try:
+            # Read file content
+            file_content = await file.read()
+            
+            # Process image
+            image = Image.open(BytesIO(file_content))
+            image = image.convert('RGB')
+            image = image.resize((150, 150), Image.Resampling.LANCZOS)
+            
+            # Save to bytes
+            img_bytes = BytesIO()
+            image.save(img_bytes, format='JPEG', quality=85)
+            img_bytes.seek(0)
+            
+            # Upload to Firebase Storage
+            blob_name = f"avatars/{user_id}.jpg"
+            blob = self.bucket.blob(blob_name)
+            blob.upload_from_file(img_bytes, content_type='image/jpeg')
+            blob.make_public()
+            
+            return blob.public_url
+            
+        except Exception as e:
+            logger.error(f"Failed to upload avatar for {user_id}: {e}")
+            raise e
+    
     def get_default_avatar(self, user_id: str) -> str:
         """Generate a default avatar and upload to Firebase Storage"""
         try:

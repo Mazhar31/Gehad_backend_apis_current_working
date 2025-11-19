@@ -81,10 +81,14 @@ async def delete_project(
 # User endpoints
 @router.get("/user/my-projects", response_model=ResponseModel)
 async def get_user_projects(
-    current_user: User = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Get current user's assigned projects"""
-    projects = FirebaseProjectService.get_user_projects(current_user.id)
+    user_id = current_user.get('id')
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User ID not found")
+    
+    projects = FirebaseProjectService.get_user_projects(user_id)
     return ResponseModel(
         data=projects,
         message="User projects retrieved successfully"
