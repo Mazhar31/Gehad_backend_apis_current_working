@@ -12,6 +12,7 @@ router = APIRouter()
 @router.put("/profile", response_model=ResponseModel)
 async def update_admin_profile(
     name: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
     position: Optional[str] = Form(None),
     avatar: Optional[UploadFile] = File(None),
     current_admin = Depends(get_current_admin)
@@ -23,6 +24,8 @@ async def update_admin_profile(
     # Update basic fields
     if name:
         update_data["name"] = name
+    if email:
+        update_data["email"] = email
     if position:
         update_data["position"] = position
     
