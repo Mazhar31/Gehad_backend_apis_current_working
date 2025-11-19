@@ -1,69 +1,93 @@
 import os
 import uuid
-import shutil
 from typing import Optional
 from fastapi import UploadFile
 from PIL import Image
+from io import BytesIO
 from app.core.config import settings
 from app.models.uploaded_file import UploadType
+# Import moved to function level to avoid circular dependency
+
+# Set PIL limits to prevent decompression bomb warnings
+Image.MAX_IMAGE_PIXELS = 178956970  # Increase limit but keep reasonable
 
 
 class FileService:
     @staticmethod
-    def save_file(file: UploadFile, upload_type: UploadType, user_id: str = None) -> dict:
-        """Save uploaded file and return file info"""
+    async def save_file(file: UploadFile, upload_type: str, user_id: str = None) -> dict:
+        """Save uploaded file to Firebase Storage and return file info"""
         
         # Generate unique filename
         file_extension = os.path.splitext(file.filename)[1]
         unique_filename = f"{uuid.uuid4().hex}{file_extension}"
         
-        # Determine upload directory based on type
+        # Determine upload directory based on type with proper structure
         type_dirs = {
-            UploadType.AVATAR: "avatars",
-            UploadType.LOGO: "logos", 
-            UploadType.PROJECT_IMAGE: "project_images",
-            UploadType.PORTFOLIO_IMAGE: "portfolio_images",
-            UploadType.DASHBOARD_ZIP: "dashboards"
+            "avatar": "users",
+            "logo": "clients", 
+            "project": "projects",
+            "portfolio": "portfolio",
+            "dashboard": "dashboards"
         }
         
-        upload_dir = os.path.join(settings.UPLOAD_DIR, type_dirs[upload_type])
-        os.makedirs(upload_dir, exist_ok=True)
-        
-        file_path = os.path.join(upload_dir, unique_filename)
-        
-        # Save file
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        # Read file content
+        file_content = await file.read()
+        file_size = len(file_content)
         
         # Optimize image if it's an image file
-        if upload_type in [UploadType.AVATAR, UploadType.LOGO, UploadType.PROJECT_IMAGE, UploadType.PORTFOLIO_IMAGE]:
-            FileService._optimize_image(file_path)
+        if upload_type in ["avatar", "logo", "project", "portfolio"]:
+            file_content = FileService._optimize_image_bytes(file_content)
+        
+        # Upload to Firebase Storage with proper folder structure
+        from app.services.firebase_storage_service import firebase_storage_service
+        
+        # Use entity-specific folder structure
+        if user_id:
+            file_path = f"{type_dirs[upload_type]}/{user_id}.{file_extension.lstrip('.')}"
+        else:
+            file_path = f"{type_dirs[upload_type]}/{unique_filename}"
+            
+        public_url = firebase_storage_service.upload_file(
+            file_content, 
+            file_path, 
+            file.content_type or "application/octet-stream"
+        )
         
         return {
             "filename": unique_filename,
             "original_filename": file.filename,
             "file_path": file_path,
-            "file_size": os.path.getsize(file_path),
+            "public_url": public_url,
+            "file_size": file_size,
             "mime_type": file.content_type,
             "upload_type": upload_type
         }
     
     @staticmethod
-    def _optimize_image(file_path: str, max_size: tuple = (800, 800), quality: int = 85):
-        """Optimize image size and quality"""
+    def _optimize_image_bytes(file_content: bytes, max_size: tuple = (800, 800), quality: int = 85) -> bytes:
+        """Optimize image size and quality from bytes"""
         try:
-            with Image.open(file_path) as img:
-                # Convert to RGB if necessary
-                if img.mode in ("RGBA", "P"):
-                    img = img.convert("RGB")
-                
-                # Resize if larger than max_size
-                img.thumbnail(max_size, Image.Resampling.LANCZOS)
-                
-                # Save with optimization
-                img.save(file_path, "JPEG", quality=quality, optimize=True)
+            img = Image.open(BytesIO(file_content))
+            
+            # For avatars, use smaller size
+            if max_size == (800, 800):
+                max_size = (400, 400)
+                quality = 80
+            
+            # Convert to RGB if necessary
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+            
+            # Resize if larger than max_size
+            img.thumbnail(max_size, Image.Resampling.LANCZOS)
+            
+            # Save to bytes with optimization
+            img_bytes = BytesIO()
+            img.save(img_bytes, format='JPEG', quality=quality, optimize=True)
+            return img_bytes.getvalue()
         except Exception as e:
-            print(f"Error optimizing image {file_path}: {e}")
+            print(f"Error optimizing image: {e}")
+            return file_content
     
     @staticmethod
     def delete_file(file_path: str) -> bool:
@@ -78,24 +102,26 @@ class FileService:
             return False
     
     @staticmethod
-    def get_file_url(filename: str, upload_type: UploadType) -> str:
-        """Generate URL for accessing uploaded file"""
+    def get_file_url(filename: str, upload_type: str) -> str:
+        """Generate URL for accessing uploaded file (now returns Firebase Storage URL)"""
+        # This method is now less relevant since Firebase Storage provides direct URLs
+        # But keeping for backward compatibility
         type_dirs = {
-            UploadType.AVATAR: "avatars",
-            UploadType.LOGO: "logos",
-            UploadType.PROJECT_IMAGE: "project_images", 
-            UploadType.PORTFOLIO_IMAGE: "portfolio_images",
-            UploadType.DASHBOARD_ZIP: "dashboards"
+            "avatar": "avatars",
+            "logo": "logos",
+            "project": "project_images", 
+            "portfolio": "portfolio_images",
+            "dashboard": "dashboards"
         }
         
-        return f"/static/{type_dirs[upload_type]}/{filename}"
+        return f"https://firebasestorage.googleapis.com/v0/b/{settings.FIREBASE_STORAGE_BUCKET}/o/{type_dirs[upload_type]}%2F{filename}?alt=media"
     
     @staticmethod
-    def validate_file(file: UploadFile, upload_type: UploadType) -> Optional[str]:
+    def validate_file(file: UploadFile, upload_type: str) -> Optional[str]:
         """Validate file type and size"""
         
         # Check file size
-        if file.size > settings.MAX_FILE_SIZE:
+        if file.size and file.size > settings.MAX_FILE_SIZE:
             return f"File size exceeds maximum limit of {settings.MAX_FILE_SIZE} bytes"
         
         # Define allowed types
@@ -103,11 +129,11 @@ class FileService:
         zip_types = ["application/zip", "application/x-zip-compressed"]
         
         allowed_types = {
-            UploadType.AVATAR: image_types,
-            UploadType.LOGO: image_types,
-            UploadType.PROJECT_IMAGE: image_types,
-            UploadType.PORTFOLIO_IMAGE: image_types,
-            UploadType.DASHBOARD_ZIP: zip_types
+            "avatar": image_types,
+            "logo": image_types,
+            "project": image_types,
+            "portfolio": image_types,
+            "dashboard": zip_types
         }
         
         if file.content_type not in allowed_types[upload_type]:

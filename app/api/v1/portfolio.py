@@ -1,10 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from app.core.database import get_db
+from app.core.firebase_db import firebase_db
 from app.schemas.portfolio_case import PortfolioCaseCreate, PortfolioCaseUpdate, PortfolioCaseResponse
 from app.schemas.common import ResponseModel
 from app.utils.dependencies import get_current_admin
-from app.models import Admin, PortfolioCase
+from typing import Dict, Any
 import uuid
 
 router = APIRouter()
@@ -13,37 +12,29 @@ router = APIRouter()
 @router.post("/", response_model=ResponseModel)
 async def create_portfolio_case(
     case_data: PortfolioCaseCreate,
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    current_admin: Dict[str, Any] = Depends(get_current_admin)
 ):
     """Create new portfolio case"""
-    case = PortfolioCase(
-        id=f"pc-{uuid.uuid4().hex[:8]}",
-        category=case_data.category,
-        title=case_data.title,
-        description=case_data.description,
-        link=case_data.link,
-        is_public=case_data.is_public
-    )
-    db.add(case)
-    db.commit()
-    db.refresh(case)
+    case_dict = case_data.dict()
+    case = firebase_db.create('portfolio_cases', case_dict, f"pc-{uuid.uuid4().hex[:8]}")
+    
+    if not case:
+        raise HTTPException(status_code=500, detail="Failed to create portfolio case")
     
     return ResponseModel(
-        data=PortfolioCaseResponse.from_orm(case).dict(),
+        data=case,
         message="Portfolio case created successfully"
     )
 
 
 @router.get("/", response_model=ResponseModel)
 async def get_portfolio_cases(
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    current_admin: Dict[str, Any] = Depends(get_current_admin)
 ):
     """Get list of portfolio cases"""
-    cases = db.query(PortfolioCase).all()
+    cases = firebase_db.get_all('portfolio_cases')
     return ResponseModel(
-        data=[PortfolioCaseResponse.from_orm(case).dict() for case in cases],
+        data=cases,
         message="Portfolio cases retrieved successfully"
     )
 
@@ -52,23 +43,16 @@ async def get_portfolio_cases(
 async def update_portfolio_case(
     case_id: str,
     case_data: PortfolioCaseUpdate,
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    current_admin: Dict[str, Any] = Depends(get_current_admin)
 ):
     """Update portfolio case"""
-    case = db.query(PortfolioCase).filter(PortfolioCase.id == case_id).first()
+    update_dict = case_data.dict(exclude_unset=True)
+    case = firebase_db.update('portfolio_cases', case_id, update_dict)
     if not case:
         raise HTTPException(status_code=404, detail="Portfolio case not found")
     
-    update_data = case_data.dict(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(case, field, value)
-    
-    db.commit()
-    db.refresh(case)
-    
     return ResponseModel(
-        data=PortfolioCaseResponse.from_orm(case).dict(),
+        data=case,
         message="Portfolio case updated successfully"
     )
 
@@ -76,26 +60,22 @@ async def update_portfolio_case(
 @router.delete("/{case_id}", response_model=ResponseModel)
 async def delete_portfolio_case(
     case_id: str,
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    current_admin: Dict[str, Any] = Depends(get_current_admin)
 ):
     """Delete portfolio case"""
-    case = db.query(PortfolioCase).filter(PortfolioCase.id == case_id).first()
-    if not case:
+    success = firebase_db.delete('portfolio_cases', case_id)
+    if not success:
         raise HTTPException(status_code=404, detail="Portfolio case not found")
-    
-    db.delete(case)
-    db.commit()
     
     return ResponseModel(message="Portfolio case deleted successfully")
 
 
 # Public endpoint for portfolio cases
 @router.get("/public", response_model=ResponseModel)
-async def get_public_portfolio_cases(db: Session = Depends(get_db)):
+async def get_public_portfolio_cases():
     """Get public portfolio cases (no authentication required)"""
-    cases = db.query(PortfolioCase).filter(PortfolioCase.is_public == True).all()
+    cases = firebase_db.get_all('portfolio_cases', [('is_public', '==', True)])
     return ResponseModel(
-        data=[PortfolioCaseResponse.from_orm(case).dict() for case in cases],
+        data=cases,
         message="Public portfolio cases retrieved successfully"
     )

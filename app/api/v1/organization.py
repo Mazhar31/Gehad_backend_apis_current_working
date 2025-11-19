@@ -1,12 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from app.core.database import get_db
+from app.core.firebase_db import firebase_db
 from app.schemas.department import DepartmentCreate, DepartmentUpdate, DepartmentResponse
 from app.schemas.group import GroupCreate, GroupUpdate, GroupResponse
 from app.schemas.category import CategoryCreate, CategoryUpdate, CategoryResponse
 from app.schemas.common import ResponseModel
 from app.utils.dependencies import get_current_admin
-from app.models import Admin, Department, Group, Category
+from typing import Dict, Any
 import uuid
 
 router = APIRouter()
@@ -15,38 +14,34 @@ router = APIRouter()
 @router.post("/departments", response_model=ResponseModel)
 async def create_department(
     department_data: DepartmentCreate,
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    current_admin: Dict[str, Any] = Depends(get_current_admin)
 ):
     """Create new department"""
     # Check if name already exists
-    existing = db.query(Department).filter(Department.name == department_data.name).first()
+    existing = firebase_db.get_all('departments', [('name', '==', department_data.name)])
     if existing:
         raise HTTPException(status_code=400, detail="Department name already exists")
     
-    department = Department(
-        id=f"dept-{uuid.uuid4().hex[:8]}",
-        name=department_data.name
-    )
-    db.add(department)
-    db.commit()
-    db.refresh(department)
+    department_dict = department_data.dict()
+    department = firebase_db.create('departments', department_dict, f"dept-{uuid.uuid4().hex[:8]}")
+    
+    if not department:
+        raise HTTPException(status_code=500, detail="Failed to create department")
     
     return ResponseModel(
-        data=DepartmentResponse.from_orm(department).dict(),
+        data=department,
         message="Department created successfully"
     )
 
 
 @router.get("/departments", response_model=ResponseModel)
 async def get_departments(
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    current_admin: Dict[str, Any] = Depends(get_current_admin)
 ):
     """Get list of departments"""
-    departments = db.query(Department).all()
+    departments = firebase_db.get_all('departments')
     return ResponseModel(
-        data=[DepartmentResponse.from_orm(dept).dict() for dept in departments],
+        data=departments,
         message="Departments retrieved successfully"
     )
 
@@ -55,30 +50,27 @@ async def get_departments(
 async def update_department(
     department_id: str,
     department_data: DepartmentUpdate,
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    current_admin: Dict[str, Any] = Depends(get_current_admin)
 ):
     """Update department"""
-    department = db.query(Department).filter(Department.id == department_id).first()
+    department = firebase_db.get_by_id('departments', department_id)
     if not department:
         raise HTTPException(status_code=404, detail="Department not found")
     
-    if department_data.name:
+    update_dict = department_data.dict(exclude_unset=True)
+    if update_dict.get('name'):
         # Check if new name already exists
-        existing = db.query(Department).filter(
-            Department.name == department_data.name,
-            Department.id != department_id
-        ).first()
+        existing = firebase_db.get_all('departments', [('name', '==', update_dict['name'])])
+        existing = [d for d in existing if d['id'] != department_id]
         if existing:
             raise HTTPException(status_code=400, detail="Department name already exists")
-        
-        department.name = department_data.name
     
-    db.commit()
-    db.refresh(department)
+    updated_department = firebase_db.update('departments', department_id, update_dict)
+    if not updated_department:
+        raise HTTPException(status_code=404, detail="Department not found")
     
     return ResponseModel(
-        data=DepartmentResponse.from_orm(department).dict(),
+        data=updated_department,
         message="Department updated successfully"
     )
 
@@ -86,16 +78,12 @@ async def update_department(
 @router.delete("/departments/{department_id}", response_model=ResponseModel)
 async def delete_department(
     department_id: str,
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    current_admin: Dict[str, Any] = Depends(get_current_admin)
 ):
     """Delete department"""
-    department = db.query(Department).filter(Department.id == department_id).first()
-    if not department:
+    success = firebase_db.delete('departments', department_id)
+    if not success:
         raise HTTPException(status_code=404, detail="Department not found")
-    
-    db.delete(department)
-    db.commit()
     
     return ResponseModel(message="Department deleted successfully")
 
@@ -104,38 +92,34 @@ async def delete_department(
 @router.post("/groups", response_model=ResponseModel)
 async def create_group(
     group_data: GroupCreate,
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    current_admin: Dict[str, Any] = Depends(get_current_admin)
 ):
     """Create new group"""
     # Check if name already exists
-    existing = db.query(Group).filter(Group.name == group_data.name).first()
+    existing = firebase_db.get_all('groups', [('name', '==', group_data.name)])
     if existing:
         raise HTTPException(status_code=400, detail="Group name already exists")
     
-    group = Group(
-        id=f"g-{uuid.uuid4().hex[:8]}",
-        name=group_data.name
-    )
-    db.add(group)
-    db.commit()
-    db.refresh(group)
+    group_dict = group_data.dict()
+    group = firebase_db.create('groups', group_dict, f"g-{uuid.uuid4().hex[:8]}")
+    
+    if not group:
+        raise HTTPException(status_code=500, detail="Failed to create group")
     
     return ResponseModel(
-        data=GroupResponse.from_orm(group).dict(),
+        data=group,
         message="Group created successfully"
     )
 
 
 @router.get("/groups", response_model=ResponseModel)
 async def get_groups(
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    current_admin: Dict[str, Any] = Depends(get_current_admin)
 ):
     """Get list of groups"""
-    groups = db.query(Group).all()
+    groups = firebase_db.get_all('groups')
     return ResponseModel(
-        data=[GroupResponse.from_orm(group).dict() for group in groups],
+        data=groups,
         message="Groups retrieved successfully"
     )
 
@@ -144,30 +128,27 @@ async def get_groups(
 async def update_group(
     group_id: str,
     group_data: GroupUpdate,
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    current_admin: Dict[str, Any] = Depends(get_current_admin)
 ):
     """Update group"""
-    group = db.query(Group).filter(Group.id == group_id).first()
+    group = firebase_db.get_by_id('groups', group_id)
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
     
-    if group_data.name:
+    update_dict = group_data.dict(exclude_unset=True)
+    if update_dict.get('name'):
         # Check if new name already exists
-        existing = db.query(Group).filter(
-            Group.name == group_data.name,
-            Group.id != group_id
-        ).first()
+        existing = firebase_db.get_all('groups', [('name', '==', update_dict['name'])])
+        existing = [g for g in existing if g['id'] != group_id]
         if existing:
             raise HTTPException(status_code=400, detail="Group name already exists")
-        
-        group.name = group_data.name
     
-    db.commit()
-    db.refresh(group)
+    updated_group = firebase_db.update('groups', group_id, update_dict)
+    if not updated_group:
+        raise HTTPException(status_code=404, detail="Group not found")
     
     return ResponseModel(
-        data=GroupResponse.from_orm(group).dict(),
+        data=updated_group,
         message="Group updated successfully"
     )
 
@@ -175,20 +156,17 @@ async def update_group(
 @router.delete("/groups/{group_id}", response_model=ResponseModel)
 async def delete_group(
     group_id: str,
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    current_admin: Dict[str, Any] = Depends(get_current_admin)
 ):
     """Delete group"""
-    group = db.query(Group).filter(Group.id == group_id).first()
-    if not group:
+    # Remove group from clients first
+    clients = firebase_db.get_all('clients', [('group_id', '==', group_id)])
+    for client in clients:
+        firebase_db.update('clients', client['id'], {'group_id': None})
+    
+    success = firebase_db.delete('groups', group_id)
+    if not success:
         raise HTTPException(status_code=404, detail="Group not found")
-    
-    # Remove group from clients
-    from app.models import Client
-    db.query(Client).filter(Client.group_id == group_id).update({"group_id": None})
-    
-    db.delete(group)
-    db.commit()
     
     return ResponseModel(message="Group deleted successfully")
 
@@ -197,38 +175,34 @@ async def delete_group(
 @router.post("/categories", response_model=ResponseModel)
 async def create_category(
     category_data: CategoryCreate,
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    current_admin: Dict[str, Any] = Depends(get_current_admin)
 ):
     """Create new category"""
     # Check if name already exists
-    existing = db.query(Category).filter(Category.name == category_data.name).first()
+    existing = firebase_db.get_all('categories', [('name', '==', category_data.name)])
     if existing:
         raise HTTPException(status_code=400, detail="Category name already exists")
     
-    category = Category(
-        id=f"cat-{uuid.uuid4().hex[:8]}",
-        name=category_data.name
-    )
-    db.add(category)
-    db.commit()
-    db.refresh(category)
+    category_dict = category_data.dict()
+    category = firebase_db.create('categories', category_dict, f"cat-{uuid.uuid4().hex[:8]}")
+    
+    if not category:
+        raise HTTPException(status_code=500, detail="Failed to create category")
     
     return ResponseModel(
-        data=CategoryResponse.from_orm(category).dict(),
+        data=category,
         message="Category created successfully"
     )
 
 
 @router.get("/categories", response_model=ResponseModel)
 async def get_categories(
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    current_admin: Dict[str, Any] = Depends(get_current_admin)
 ):
     """Get list of categories"""
-    categories = db.query(Category).all()
+    categories = firebase_db.get_all('categories')
     return ResponseModel(
-        data=[CategoryResponse.from_orm(cat).dict() for cat in categories],
+        data=categories,
         message="Categories retrieved successfully"
     )
 
@@ -237,30 +211,27 @@ async def get_categories(
 async def update_category(
     category_id: str,
     category_data: CategoryUpdate,
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    current_admin: Dict[str, Any] = Depends(get_current_admin)
 ):
     """Update category"""
-    category = db.query(Category).filter(Category.id == category_id).first()
+    category = firebase_db.get_by_id('categories', category_id)
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
     
-    if category_data.name:
+    update_dict = category_data.dict(exclude_unset=True)
+    if update_dict.get('name'):
         # Check if new name already exists
-        existing = db.query(Category).filter(
-            Category.name == category_data.name,
-            Category.id != category_id
-        ).first()
+        existing = firebase_db.get_all('categories', [('name', '==', update_dict['name'])])
+        existing = [c for c in existing if c['id'] != category_id]
         if existing:
             raise HTTPException(status_code=400, detail="Category name already exists")
-        
-        category.name = category_data.name
     
-    db.commit()
-    db.refresh(category)
+    updated_category = firebase_db.update('categories', category_id, update_dict)
+    if not updated_category:
+        raise HTTPException(status_code=404, detail="Category not found")
     
     return ResponseModel(
-        data=CategoryResponse.from_orm(category).dict(),
+        data=updated_category,
         message="Category updated successfully"
     )
 
@@ -268,15 +239,11 @@ async def update_category(
 @router.delete("/categories/{category_id}", response_model=ResponseModel)
 async def delete_category(
     category_id: str,
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    current_admin: Dict[str, Any] = Depends(get_current_admin)
 ):
     """Delete category"""
-    category = db.query(Category).filter(Category.id == category_id).first()
-    if not category:
+    success = firebase_db.delete('categories', category_id)
+    if not success:
         raise HTTPException(status_code=404, detail="Category not found")
-    
-    db.delete(category)
-    db.commit()
     
     return ResponseModel(message="Category deleted successfully")

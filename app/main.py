@@ -1,23 +1,22 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from app.core.config import settings
-from app.core.database import engine, Base
 from app.api.auth.auth import router as auth_router
 from app.api.v1.admin import router as admin_router
-from app.api.v1.clients import router as clients_router
-from app.api.v1.projects import router as projects_router
-from app.api.v1.users import router as users_router
-from app.api.v1.invoices import router as invoices_router
-from app.api.v1.organization import router as organization_router
-from app.api.v1.payment_plans import router as payment_plans_router
-from app.api.v1.portfolio import router as portfolio_router
-from app.api.v1.contact import router as contact_router
-import os
+from app.api.v1.firebase_admin import router as firebase_admin_router
+from app.api.v1.firebase_clients import router as clients_router
+from app.api.v1.firebase_projects import router as projects_router
+from app.api.v1.firebase_users import router as users_router
+from app.api.v1.firebase_invoices import router as invoices_router
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
+from app.api.v1.firebase_payment_plans import router as payment_plans_router
+from app.api.v1.firebase_organization import router as organization_router_firebase
+from app.api.v1.firebase_portfolio import router as portfolio_router
+from app.api.v1.contact import router as contact_router
+from app.api.v1.upload import router as upload_router
+from app.api.setup import router as setup_router
+import os
 
 # Create FastAPI app
 app = FastAPI(
@@ -37,28 +36,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Create upload directories
-os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-os.makedirs(f"{settings.UPLOAD_DIR}/avatars", exist_ok=True)
-os.makedirs(f"{settings.UPLOAD_DIR}/logos", exist_ok=True)
-os.makedirs(f"{settings.UPLOAD_DIR}/project_images", exist_ok=True)
-os.makedirs(f"{settings.UPLOAD_DIR}/portfolio_images", exist_ok=True)
-os.makedirs(f"{settings.UPLOAD_DIR}/dashboards", exist_ok=True)
-
-# Mount static files
-app.mount("/static", StaticFiles(directory=settings.UPLOAD_DIR), name="static")
+# Firebase handles file storage - no local directories needed
 
 # Include routers
 app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(admin_router, prefix="/api/admin", tags=["Admin"])
+app.include_router(firebase_admin_router, prefix="/api/admin/firebase", tags=["Firebase Admin"])
 app.include_router(clients_router, prefix="/api/admin/clients", tags=["Clients"])
 app.include_router(projects_router, prefix="/api/admin/projects", tags=["Projects"])
 app.include_router(users_router, prefix="/api/admin/users", tags=["Users"])
 app.include_router(invoices_router, prefix="/api/admin/invoices", tags=["Invoices"])
-app.include_router(organization_router, prefix="/api/admin", tags=["Organization"])
+app.include_router(organization_router_firebase, prefix="/api/admin", tags=["Organization"])
 app.include_router(payment_plans_router, prefix="/api/admin/payment-plans", tags=["Payment Plans"])
 app.include_router(portfolio_router, prefix="/api/admin/portfolio", tags=["Portfolio"])
 app.include_router(contact_router, prefix="/api/contact", tags=["Contact"])
+app.include_router(upload_router, prefix="/api/upload", tags=["File Upload"])
+app.include_router(setup_router, prefix="/api/setup", tags=["Setup"])
 
 # Global exception handler
 @app.exception_handler(Exception)

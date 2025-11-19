@@ -58,5 +58,53 @@ class EmailService:
             logger.error(f"Failed to send contact notification email: {str(e)}")
             return False
 
+    def send_password_reset_email(self, email: str, reset_url: str):
+        """Send password reset email"""
+        try:
+            # Create message
+            msg = MIMEMultipart()
+            msg['From'] = self.from_email
+            msg['To'] = email
+            msg['Subject'] = "Password Reset - OneQlek"
+
+            # Email body
+            body = f"""
+            <html>
+            <body>
+                <h2>Password Reset Request</h2>
+                <p>You have requested to reset your password for your OneQlek account.</p>
+                <p>Click the link below to reset your password:</p>
+                <p><a href="{reset_url}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reset Password</a></p>
+                <p>If the button doesn't work, copy and paste this link into your browser:</p>
+                <p>{reset_url}</p>
+                <p><strong>This link will expire in 1 hour.</strong></p>
+                <p>If you didn't request this password reset, please ignore this email.</p>
+                <hr>
+                <p><small>OneQlek Team</small></p>
+            </body>
+            </html>
+            """
+
+            msg.attach(MIMEText(body, 'html'))
+
+            # Send email
+            server = smtplib.SMTP(self.smtp_host, self.smtp_port)
+            server.starttls()
+            server.login(self.smtp_user, self.smtp_pass)
+            text = msg.as_string()
+            server.sendmail(self.from_email, email, text)
+            server.quit()
+
+            logger.info(f"Password reset email sent successfully to {email}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to send password reset email: {str(e)}")
+            return False
+
 # Create global instance
 email_service = EmailService()
+
+# Helper function for easy import
+async def send_password_reset_email(email: str, reset_url: str):
+    return email_service.send_password_reset_email(email, reset_url)

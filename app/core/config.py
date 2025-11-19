@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     ADMIN_EMAIL: str
     FROM_EMAIL: str
     
+    # Firebase
+    FIREBASE_PROJECT_ID: str
+    FIREBASE_API_KEY: str
+    FIREBASE_AUTH_DOMAIN: str
+    FIREBASE_STORAGE_BUCKET: str
+    FIREBASE_MESSAGING_SENDER_ID: str
+    FIREBASE_APP_ID: str
+    
     @property
     def allowed_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",")]

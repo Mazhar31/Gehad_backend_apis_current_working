@@ -1,234 +1,158 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from app.core.database import get_db
-from app.services.auth_service import AuthService
-from app.services.admin_service import AdminService
-from app.services.user_service import UserService
+from app.core.firebase_db import firebase_db
 from app.schemas.admin import AdminLogin
 from app.schemas.user import UserLogin
-from app.schemas.auth import Token, TwoFactorVerify, TwoFactorSetup
 from app.schemas.common import ResponseModel
 from app.utils.dependencies import get_current_admin, get_current_user, get_current_admin_or_user
-from app.models import Admin, User
-from typing import Union
+from app.core.security import verify_password, create_access_token, get_password_hash
+from typing import Dict, Any
+from datetime import timedelta
+from app.core.config import settings
+from app.services.email_service import send_password_reset_email
+from fastapi import Query
+import secrets
+import uuid
+from datetime import datetime
 
 router = APIRouter()
 
-
 @router.post("/admin/login", response_model=ResponseModel)
 async def admin_login(
-    login_data: AdminLogin,
-    db: Session = Depends(get_db)
+    login_data: AdminLogin
 ):
-    admin = AuthService.authenticate_admin(db, login_data.email, login_data.password)
-    if not admin:
+    admin = firebase_db.get_admin_by_email(login_data.email)
+    if not admin or not verify_password(login_data.password, admin.get('password_hash', '')):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
         )
     
-    # If 2FA is enabled, require token verification
-    if admin.two_factor_enabled:
-        return ResponseModel(
-            data={"requires_2fa": True, "admin_id": admin.id},
-            message="2FA verification required"
-        )
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        subject=f"{admin['id']}:admin", expires_delta=access_token_expires
+    )
     
-    token = AuthService.create_token(admin.id, "admin")
     return ResponseModel(
-        data=token.dict(),
+        data={"access_token": access_token, "token_type": "bearer"},
         message="Login successful"
     )
-
-
-@router.post("/admin/verify-2fa", response_model=ResponseModel)
-async def admin_verify_2fa(
-    admin_id: str,
-    verify_data: TwoFactorVerify,
-    db: Session = Depends(get_db)
-):
-    admin = AdminService.get_admin(db, admin_id)
-    if not admin:
-        raise HTTPException(status_code=404, detail="Admin not found")
-    
-    if not AuthService.verify_2fa(admin, verify_data.token):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid 2FA token"
-        )
-    
-    token = AuthService.create_token(admin.id, "admin")
-    return ResponseModel(
-        data=token.dict(),
-        message="2FA verification successful"
-    )
-
 
 @router.post("/user/login", response_model=ResponseModel)
 async def user_login(
-    login_data: UserLogin,
-    db: Session = Depends(get_db)
+    login_data: UserLogin
 ):
-    user = AuthService.authenticate_user(db, login_data.email, login_data.password)
-    if not user:
+    user = firebase_db.get_user_by_email(login_data.email)
+    if not user or not verify_password(login_data.password, user.get('password_hash', '')):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
         )
     
-    # If 2FA is enabled, require token verification
-    if user.two_factor_enabled:
-        return ResponseModel(
-            data={"requires_2fa": True, "user_id": user.id},
-            message="2FA verification required"
-        )
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        subject=f"{user['id']}:user", expires_delta=access_token_expires
+    )
     
-    token = AuthService.create_token(user.id, "user")
     return ResponseModel(
-        data=token.dict(),
+        data={"access_token": access_token, "token_type": "bearer"},
         message="Login successful"
     )
 
-
-@router.post("/user/verify-2fa", response_model=ResponseModel)
-async def user_verify_2fa(
-    user_id: str,
-    verify_data: TwoFactorVerify,
-    db: Session = Depends(get_db)
-):
-    user = UserService.get_user(db, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    if not AuthService.verify_2fa(user, verify_data.token):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid 2FA token"
-        )
-    
-    token = AuthService.create_token(user.id, "user")
-    return ResponseModel(
-        data=token.dict(),
-        message="2FA verification successful"
-    )
-
-
-@router.post("/admin/setup-2fa", response_model=ResponseModel)
-async def admin_setup_2fa(
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
-):
-    setup_data = AdminService.setup_2fa(db, current_admin.id)
-    if not setup_data:
-        raise HTTPException(status_code=404, detail="Admin not found")
-    
-    return ResponseModel(
-        data=setup_data.dict(),
-        message="2FA setup initiated. Scan QR code with authenticator app"
-    )
-
-
-@router.post("/admin/enable-2fa", response_model=ResponseModel)
-async def admin_enable_2fa(
-    verify_data: TwoFactorVerify,
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
-):
-    # Verify the token before enabling
-    if not AuthService.verify_2fa(current_admin, verify_data.token):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid 2FA token"
-        )
-    
-    success = AdminService.enable_2fa(db, current_admin.id)
-    if not success:
-        raise HTTPException(status_code=400, detail="Failed to enable 2FA")
-    
-    return ResponseModel(message="2FA enabled successfully")
-
-
-@router.post("/admin/disable-2fa", response_model=ResponseModel)
-async def admin_disable_2fa(
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
-):
-    success = AdminService.disable_2fa(db, current_admin.id)
-    if not success:
-        raise HTTPException(status_code=400, detail="Failed to disable 2FA")
-    
-    return ResponseModel(message="2FA disabled successfully")
-
-
-@router.post("/user/setup-2fa", response_model=ResponseModel)
-async def user_setup_2fa(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    setup_data = UserService.setup_2fa(db, current_user.id)
-    if not setup_data:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    return ResponseModel(
-        data=setup_data.dict(),
-        message="2FA setup initiated. Scan QR code with authenticator app"
-    )
-
-
-@router.post("/user/enable-2fa", response_model=ResponseModel)
-async def user_enable_2fa(
-    verify_data: TwoFactorVerify,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    # Verify the token before enabling
-    if not AuthService.verify_2fa(current_user, verify_data.token):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid 2FA token"
-        )
-    
-    success = UserService.enable_2fa(db, current_user.id)
-    if not success:
-        raise HTTPException(status_code=400, detail="Failed to enable 2FA")
-    
-    return ResponseModel(message="2FA enabled successfully")
-
-
-@router.post("/user/disable-2fa", response_model=ResponseModel)
-async def user_disable_2fa(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    success = UserService.disable_2fa(db, current_user.id)
-    if not success:
-        raise HTTPException(status_code=400, detail="Failed to disable 2FA")
-    
-    return ResponseModel(message="2FA disabled successfully")
-
-
 @router.get("/me", response_model=ResponseModel)
 async def get_current_user_info(
-    current_user: Union[Admin, User] = Depends(get_current_admin_or_user)
+    current_user: Dict[str, Any] = Depends(get_current_admin_or_user)
 ):
     user_data = {
-        "id": current_user.id,
-        "name": current_user.name,
-        "email": current_user.email,
-        "avatar_url": current_user.avatar_url,
-        "two_factor_enabled": current_user.two_factor_enabled,
-        "user_type": "admin" if isinstance(current_user, Admin) else "user"
+        "id": current_user.get('id'),
+        "name": current_user.get('name'),
+        "email": current_user.get('email'),
+        "avatar_url": current_user.get('avatar_url'),
+        "two_factor_enabled": current_user.get('two_factor_enabled', False),
+        "user_type": current_user.get('user_type', 'user')
     }
     
-    if isinstance(current_user, Admin):
-        user_data["position"] = current_user.position
+    if current_user.get('user_type') == 'admin':
+        user_data["position"] = current_user.get('position')
     else:
-        user_data["position"] = current_user.position
-        user_data["client_id"] = current_user.client_id
-        user_data["role"] = current_user.role
-        user_data["dashboard_access"] = current_user.dashboard_access
+        user_data["position"] = current_user.get('position')
+        user_data["client_id"] = current_user.get('client_id')
+        user_data["role"] = current_user.get('role')
+        user_data["dashboard_access"] = current_user.get('dashboard_access')
     
     return ResponseModel(
         data=user_data,
         message="User information retrieved successfully"
+    )
+
+@router.post("/forgot-password", response_model=ResponseModel)
+async def forgot_password(email: str = Query(...)):
+    """Send password reset email"""
+    # Check if user exists (admin or regular user)
+    admin = firebase_db.get_admin_by_email(email)
+    user = firebase_db.get_user_by_email(email) if not admin else None
+    
+    if not admin and not user:
+        # Don't reveal if email exists or not for security
+        return ResponseModel(
+            message="If the email exists, a password reset link has been sent"
+        )
+    
+    # Generate reset token
+    reset_token = secrets.token_urlsafe(32)
+    
+    # Store reset token in Firebase
+    reset_data = {
+        "email": email,
+        "reset_token": reset_token,
+        "user_type": "admin" if admin else "user",
+        "user_id": admin['id'] if admin else user['id'],
+        "expires_at": (datetime.utcnow() + timedelta(hours=1)).isoformat()
+    }
+    
+    firebase_db.create('password_resets', reset_data, f"reset-{uuid.uuid4().hex[:8]}")
+    
+    # Send email
+    reset_url = f"http://localhost:5173/reset-password?token={reset_token}"
+    await send_password_reset_email(email, reset_url)
+    
+    return ResponseModel(
+        message="If the email exists, a password reset link has been sent"
+    )
+
+@router.post("/reset-password", response_model=ResponseModel)
+async def reset_password(token: str = Query(...), new_password: str = Query(...)):
+    """Reset password using token"""
+    from datetime import datetime
+    
+    # Find reset token
+    resets = firebase_db.get_all('password_resets', [('reset_token', '==', token)])
+    if not resets:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token"
+        )
+    
+    reset_record = resets[0]
+    
+    # Check if token is expired
+    if datetime.fromisoformat(reset_record['expires_at']) < datetime.utcnow():
+        firebase_db.delete('password_resets', reset_record['id'])
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Reset token has expired"
+        )
+    
+    # Update password
+    password_hash = get_password_hash(new_password)
+    
+    if reset_record['user_type'] == 'admin':
+        firebase_db.update('admins', reset_record['user_id'], {'password_hash': password_hash})
+    else:
+        firebase_db.update('users', reset_record['user_id'], {'password_hash': password_hash})
+    
+    # Delete reset token
+    firebase_db.delete('password_resets', reset_record['id'])
+    
+    return ResponseModel(
+        message="Password reset successfully"
     )
