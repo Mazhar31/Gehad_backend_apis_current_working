@@ -88,3 +88,48 @@ async def upload_user_avatar(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to upload avatar: {str(e)}")
+
+@router.get("/invoices", response_model=ResponseModel)
+async def get_user_invoices(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get current user's invoices for their assigned projects only"""
+    user_client_id = current_user.get('client_id')
+    user_project_ids = current_user.get('project_ids', [])
+    
+    if not user_client_id or not user_project_ids:
+        return ResponseModel(data=[], message="No client or projects associated with user")
+    
+    # Get invoices for this client that are also for the user's assigned projects
+    all_invoices = firebase_db.get_all('invoices', [('client_id', '==', user_client_id)])
+    
+    # Filter invoices to only include those for user's assigned projects
+    user_invoices = []
+    for invoice in all_invoices:
+        invoice_project_id = invoice.get('project_id')
+        if invoice_project_id and invoice_project_id in user_project_ids:
+            user_invoices.append(invoice)
+    
+    # Get client data
+    client = firebase_db.get_by_id('clients', user_client_id)
+    client_data = None
+    if client:
+        client_data = {
+            'id': client.get('id'),
+            'company': client.get('company'),
+            'email': client.get('email')
+        }
+    
+    # Add client data to each invoice
+    invoices_with_client = []
+    for invoice in user_invoices:
+        invoice_with_client = {
+            **invoice,
+            'client': client_data
+        }
+        invoices_with_client.append(invoice_with_client)
+    
+    return ResponseModel(
+        data=invoices_with_client,
+        message="User invoices retrieved successfully"
+    )

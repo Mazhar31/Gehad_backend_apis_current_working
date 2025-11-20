@@ -59,7 +59,7 @@ class FirebaseProjectService:
 
     @staticmethod
     def get_user_projects(user_id: str) -> List[Dict]:
-        """Get projects assigned to a user"""
+        """Get projects assigned to a user with client information"""
         user = firebase_db.get_by_id('users', user_id)
         if not user or not user.get('project_ids'):
             return []
@@ -70,6 +70,33 @@ class FirebaseProjectService:
         for project_id in project_ids:
             project = firebase_db.get_by_id('projects', project_id)
             if project:
-                projects.append(project)
+                # Get client data for this project
+                client_data = None
+                if project.get('client_id'):
+                    client = firebase_db.get_by_id('clients', project.get('client_id'))
+                    if client:
+                        client_data = {
+                            'id': client.get('id'),
+                            'company': client.get('company'),
+                            'email': client.get('email')
+                        }
+                
+                # Transform snake_case to camelCase for frontend
+                transformed_project = {
+                    'id': project.get('id'),
+                    'name': project.get('name'),
+                    'clientId': project.get('client_id'),
+                    'planId': project.get('plan_id'),
+                    'departmentId': project.get('department_id'),
+                    'status': project.get('status'),
+                    'startDate': project.get('start_date'),
+                    'dashboardUrl': project.get('dashboard_url'),
+                    'imageUrl': project.get('image_url'),
+                    'projectType': project.get('project_type'),
+                    'currency': project.get('currency'),
+                    'progress': project.get('progress'),
+                    'client': client_data
+                }
+                projects.append(transformed_project)
         
         return projects
