@@ -121,5 +121,28 @@ class FirebaseStorageService:
         except Exception as e:
             logger.error(f"Failed to create default avatar for {user_id}: {e}")
             return f"https://ui-avatars.com/api/?name={user_id}&size=150&background=random"
+    
+    def get_file(self, file_path: str) -> bytes:
+        """Get file content from Firebase Storage"""
+        try:
+            blob = self.bucket.blob(file_path)
+            if not blob.exists():
+                return None
+            return blob.download_as_bytes()
+        except Exception as e:
+            logger.error(f"Failed to get file {file_path}: {e}")
+            return None
+    
+    def delete_file(self, file_path: str) -> bool:
+        """Delete file from Firebase Storage"""
+        try:
+            blob = self.bucket.blob(file_path)
+            if blob.exists():
+                blob.delete()
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Failed to delete file {file_path}: {e}")
+            return False
 
 firebase_storage_service = FirebaseStorageService()

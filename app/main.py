@@ -19,6 +19,7 @@ from app.api.v1.firebase_organization import router as organization_router_fireb
 from app.api.v1.firebase_portfolio import router as portfolio_router
 from app.api.v1.contact import router as contact_router
 from app.api.v1.upload import router as upload_router
+from app.api.v1.deploy import router as deploy_router
 from app.api.setup import router as setup_router
 import os
 
@@ -64,6 +65,14 @@ app.include_router(payment_plans_router, prefix="/api/admin/payment-plans", tags
 app.include_router(portfolio_router, prefix="/api/admin/portfolio", tags=["Portfolio"])
 app.include_router(contact_router, prefix="/api/contact", tags=["Contact"])
 app.include_router(upload_router, prefix="/api/upload", tags=["File Upload"])
+app.include_router(deploy_router, prefix="/api/admin/deploy", tags=["Dashboard Deployment"])
+
+# Add assets route at root level for dashboard assets
+@app.get("/assets/{file_path:path}")
+async def serve_assets(file_path: str, request: Request):
+    """Serve dashboard assets"""
+    from app.api.v1.deploy import serve_dashboard_assets
+    return await serve_dashboard_assets(file_path, request)
 app.include_router(setup_router, prefix="/api/setup", tags=["Setup"])
 
 # Global exception handler

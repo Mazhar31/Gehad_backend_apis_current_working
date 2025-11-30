@@ -76,6 +76,10 @@ class FirebaseDB:
         """Get admin by email"""
         admins = self.get_all('admins', [('email', '==', email)])
         return admins[0] if admins else None
+    
+    def _get_current_timestamp(self) -> str:
+        """Get current timestamp in ISO format"""
+        return datetime.utcnow().isoformat()
 
 # Global instance
 firebase_db = FirebaseDB()
