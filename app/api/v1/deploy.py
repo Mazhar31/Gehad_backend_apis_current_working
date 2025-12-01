@@ -97,23 +97,50 @@ async def serve_dashboard_assets(
     file_path: str,
     request: Request
 ):
-    """Serve dashboard assets - extract client/project from referer"""
+    """Serve project assets - extract client/project from referer"""
     
-    # Get referer to determine which dashboard is requesting the asset
+    # Get referer to determine which project is requesting the asset
     referer = request.headers.get("referer", "")
     if not referer:
         raise HTTPException(status_code=404, detail="Asset not found")
     
     # Extract client_slug, project_slug, and token from referer URL
     import re
-    match = re.search(r'/dashboard/([^/]+)/([^/?]+)(?:\?token=([^&]+))?', referer)
+    # Match both /dashboard/ and /addins/ patterns
+    match = re.search(r'/(dashboard|addins)/([^/]+)/([^/?]+)(?:\?token=([^&]+))?', referer)
     if not match:
         raise HTTPException(status_code=404, detail="Asset not found")
     
-    client_slug, project_slug, token = match.groups()
+    project_type, client_slug, project_slug, token = match.groups()
+    project_type_path = "dashboards" if project_type == "dashboard" else "addins"
     
     # Use token from referer URL for authentication
-    return await serve_dashboard_file_with_auth(client_slug, project_slug, file_path, request, token)
+    return await serve_project_file_with_auth(client_slug, project_slug, file_path, request, token, project_type_path)
+
+@router.get("/{file_name}")
+async def serve_root_files(
+    file_name: str,
+    request: Request
+):
+    """Serve root-level files like index.css from project deployments"""
+    
+    # Get referer to determine which project is requesting the file
+    referer = request.headers.get("referer", "")
+    if not referer:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Extract client_slug, project_slug, and token from referer URL
+    import re
+    # Match both /dashboard/ and /addins/ patterns
+    match = re.search(r'/(dashboard|addins)/([^/]+)/([^/?]+)(?:\?token=([^&]+))?', referer)
+    if not match:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    project_type, client_slug, project_slug, token = match.groups()
+    project_type_path = "dashboards" if project_type == "dashboard" else "addins"
+    
+    # Use token from referer URL for authentication
+    return await serve_project_file_with_auth(client_slug, project_slug, file_name, request, token, project_type_path)
 
 async def serve_dashboard_file_with_auth(
     client_slug: str,
@@ -123,6 +150,17 @@ async def serve_dashboard_file_with_auth(
     token: Optional[str] = Query(None)
 ):
     """Internal function to serve dashboard files with authentication"""
+    return await serve_project_file_with_auth(client_slug, project_slug, file_path, request, token, "dashboards")
+
+async def serve_project_file_with_auth(
+    client_slug: str,
+    project_slug: str,
+    file_path: str,
+    request: Request,
+    token: Optional[str] = Query(None),
+    project_type_path: str = "dashboards"
+):
+    """Internal function to serve project files with authentication"""
     
     # Handle authentication via query parameter for iframe requests
     current_user = None
@@ -166,7 +204,7 @@ async def serve_dashboard_file_with_auth(
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
     
-    return await serve_dashboard_file_internal(client_slug, project_slug, file_path, current_user)
+    return await serve_project_file_internal(client_slug, project_slug, file_path, current_user, project_type_path)
 
 async def serve_dashboard_file_internal(
     client_slug: str,
@@ -175,18 +213,28 @@ async def serve_dashboard_file_internal(
     current_user: Dict[str, Any]
 ):
     """Internal function to serve dashboard files with authentication and access control"""
+    return await serve_project_file_internal(client_slug, project_slug, file_path, current_user, "dashboards")
+
+async def serve_project_file_internal(
+    client_slug: str,
+    project_slug: str,
+    file_path: str,
+    current_user: Dict[str, Any],
+    project_type_path: str = "dashboards"
+):
+    """Internal function to serve project files with authentication and access control"""
     
     try:
-        # Validate user access to this dashboard
+        # Validate user access to this project
         access_granted = await DashboardDeploymentService.validate_dashboard_access(
             client_slug, project_slug, current_user
         )
         
         if not access_granted:
-            raise HTTPException(status_code=403, detail="Access denied to this dashboard")
+            raise HTTPException(status_code=403, detail="Access denied to this project")
         
         # Construct storage path
-        storage_path = f"dashboards/{client_slug}/{project_slug}/{file_path}"
+        storage_path = f"{project_type_path}/{client_slug}/{project_slug}/{file_path}"
         print(f"🔍 Looking for file at: {storage_path}")
         
         # Get file from Firebase Storage
@@ -194,7 +242,7 @@ async def serve_dashboard_file_internal(
         
         # If not found and file_path doesn't start with 'assets/', try adding it
         if not file_content and not file_path.startswith('assets/'):
-            assets_storage_path = f"dashboards/{client_slug}/{project_slug}/assets/{file_path}"
+            assets_storage_path = f"{project_type_path}/{client_slug}/{project_slug}/assets/{file_path}"
             print(f"🔍 Trying with assets prefix: {assets_storage_path}")
             file_content = firebase_storage_service.get_file(assets_storage_path)
         
@@ -266,6 +314,26 @@ async def serve_dashboard_index(
     token: Optional[str] = Query(None)
 ):
     """Serve dashboard index.html with authentication"""
+    return await serve_project_index(client_slug, project_slug, request, token, "dashboards")
+
+@router.get("/addins/{client_slug}/{project_slug}")
+async def serve_addins_index(
+    client_slug: str,
+    project_slug: str,
+    request: Request,
+    token: Optional[str] = Query(None)
+):
+    """Serve addins index.html with authentication"""
+    return await serve_project_index(client_slug, project_slug, request, token, "addins")
+
+async def serve_project_index(
+    client_slug: str,
+    project_slug: str,
+    request: Request,
+    token: Optional[str] = Query(None),
+    project_type_path: str = "dashboards"
+):
+    """Serve project index.html with authentication"""
     
     # Handle authentication via query parameter for iframe requests
     current_user = None
@@ -309,4 +377,4 @@ async def serve_dashboard_index(
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
     
-    return await serve_dashboard_file_internal(client_slug, project_slug, "index.html", current_user)
+    return await serve_project_file_internal(client_slug, project_slug, "index.html", current_user, project_type_path)

@@ -78,6 +78,21 @@ async def delete_project(
     
     return ResponseModel(message="Project deleted successfully")
 
+@router.get("/{project_id}/dashboard-access", response_model=ResponseModel)
+async def get_project_dashboard_access(
+    project_id: str,
+    current_admin: Admin = Depends(get_current_admin)
+):
+    """Get dashboard access information for a project"""
+    from app.services.dashboard_deployment_service import DashboardDeploymentService
+    
+    access_info = await DashboardDeploymentService.get_dashboard_access_info(project_id)
+    
+    return ResponseModel(
+        data=access_info,
+        message="Dashboard access information retrieved successfully"
+    )
+
 # User endpoints
 @router.get("/user/my-projects", response_model=ResponseModel)
 async def get_user_projects(

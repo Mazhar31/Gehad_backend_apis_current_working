@@ -54,18 +54,25 @@ class DashboardDeploymentService:
         firebase_db.create('dashboard_deployments', deployment_data, deployment_id)
         
         try:
-            # Generate dashboard path
+            # Get project type to determine URL structure
+            project = firebase_db.get_by_id('projects', project_id)
+            project_type = project.get('project_type', 'Dashboard') if project else 'Dashboard'
+            
+            # Generate path and URL based on project type
             client_slug = DashboardDeploymentService._sanitize_name(client_name)
             project_slug = DashboardDeploymentService._sanitize_name(project_name)
-            dashboard_path = f"dashboards/{client_slug}/{project_slug}"
+            
+            if project_type == 'Add-ins':
+                storage_path = f"addins/{client_slug}/{project_slug}"
+                dashboard_url = f"/addins/{client_slug}/{project_slug}"
+            else:
+                storage_path = f"dashboards/{client_slug}/{project_slug}"
+                dashboard_url = f"/dashboard/{client_slug}/{project_slug}"
             
             # Process the ZIP file
             built_files_info = await DashboardDeploymentService._process_dashboard_zip(
-                dashboard_file, dashboard_path
+                dashboard_file, storage_path
             )
-            
-            # Generate dashboard URL
-            dashboard_url = f"/dashboard/{client_slug}/{project_slug}"
             
             # Update project with dashboard URL
             firebase_db.update('projects', project_id, {
@@ -77,7 +84,7 @@ class DashboardDeploymentService:
                 'deployment_status': 'success',
                 'deployment_url': dashboard_url,
                 'file_count': built_files_info['file_count'],
-                'storage_path': dashboard_path
+                'storage_path': storage_path
             })
             
             return {
@@ -257,6 +264,9 @@ class DashboardDeploymentService:
             if not project or not project.get('dashboard_url'):
                 return False
             
+            # Both Dashboard and Add-ins projects can be served through internal system
+            # The project type doesn't affect access validation
+            
             # Check user access
             user_type = current_user.get('user_type', 'user')
             
@@ -311,3 +321,65 @@ class DashboardDeploymentService:
         except Exception as e:
             print(f"Error deleting dashboard deployment: {e}")
             return False
+    
+    @staticmethod
+    async def handle_project_type_change(project_id: str, old_type: str, new_type: str) -> Dict[str, Any]:
+        """Handle project type changes while preserving dashboard deployments"""
+        
+        project = firebase_db.get_by_id('projects', project_id)
+        if not project:
+            raise Exception("Project not found")
+        
+        dashboard_url = project.get('dashboard_url')
+        
+        # If project has a deployed dashboard
+        if dashboard_url:
+            # Both Dashboard and Add-ins projects work the same way
+            # The deployment remains accessible regardless of project type
+            return {
+                'status': 'success',
+                'message': f'Project type changed from {old_type} to {new_type}. Deployed files remain accessible.',
+                'dashboard_url': dashboard_url,
+                'access_type': 'internal' if (dashboard_url.startswith('/dashboard/') or dashboard_url.startswith('/addins/')) else 'external'
+            }
+        
+        # No dashboard URL exists
+        return {
+            'status': 'success',
+            'message': f'Project type changed from {old_type} to {new_type}. No dashboard deployment affected.',
+            'dashboard_url': None,
+            'access_type': None
+        }
+    
+    @staticmethod
+    def is_internal_dashboard_url(dashboard_url: str) -> bool:
+        """Check if dashboard URL is for internal deployment or external link"""
+        if not dashboard_url:
+            return False
+        
+        # Internal URLs start with /dashboard/ or /addins/
+        return dashboard_url.startswith('/dashboard/') or dashboard_url.startswith('/addins/')
+    
+    @staticmethod
+    async def get_dashboard_access_info(project_id: str) -> Dict[str, Any]:
+        """Get dashboard access information for a project"""
+        
+        project = firebase_db.get_by_id('projects', project_id)
+        if not project:
+            return {'accessible': False, 'reason': 'Project not found'}
+        
+        dashboard_url = project.get('dashboard_url')
+        project_type = project.get('project_type', 'Dashboard')
+        
+        if not dashboard_url:
+            return {'accessible': False, 'reason': 'No dashboard deployed'}
+        
+        is_internal = DashboardDeploymentService.is_internal_dashboard_url(dashboard_url)
+        
+        return {
+            'accessible': True,
+            'dashboard_url': dashboard_url,
+            'project_type': project_type,
+            'is_internal': is_internal,
+            'access_method': 'internal' if is_internal else 'external'
+        }

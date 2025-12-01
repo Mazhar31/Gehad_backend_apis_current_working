@@ -50,6 +50,28 @@ class FirebaseProjectService:
     @staticmethod
     def update_project(project_id: str, project_data: Dict) -> Optional[Dict]:
         """Update project"""
+        # Check if project type is being changed
+        if 'project_type' in project_data:
+            current_project = firebase_db.get_by_id('projects', project_id)
+            if current_project:
+                old_type = current_project.get('project_type', 'Dashboard')
+                new_type = project_data['project_type']
+                
+                # If project type is changing, handle dashboard compatibility
+                if old_type != new_type:
+                    from app.services.dashboard_deployment_service import DashboardDeploymentService
+                    import asyncio
+                    
+                    # Handle the type change asynchronously
+                    try:
+                        loop = asyncio.get_event_loop()
+                        change_result = loop.run_until_complete(
+                            DashboardDeploymentService.handle_project_type_change(project_id, old_type, new_type)
+                        )
+                        print(f"Project type change handled: {change_result['message']}")
+                    except Exception as e:
+                        print(f"Error handling project type change: {e}")
+        
         return firebase_db.update('projects', project_id, project_data)
 
     @staticmethod
