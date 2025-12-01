@@ -298,6 +298,23 @@ async def serve_project_file_internal(
             "Expires": "0"
         }
         
+        # For HTML files, inject mobile viewport meta tag if not present
+        if content_type == "text/html" and file_content:
+            try:
+                html_content = file_content.decode('utf-8')
+                # Check if viewport meta tag already exists
+                if 'name="viewport"' not in html_content.lower():
+                    # Inject viewport meta tag after <head> tag
+                    viewport_meta = '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">'
+                    if '<head>' in html_content:
+                        html_content = html_content.replace('<head>', f'<head>\n    {viewport_meta}')
+                    elif '<HEAD>' in html_content:
+                        html_content = html_content.replace('<HEAD>', f'<HEAD>\n    {viewport_meta}')
+                    file_content = html_content.encode('utf-8')
+            except (UnicodeDecodeError, AttributeError):
+                # If decoding fails, serve original content
+                pass
+        
         return Response(content=file_content, media_type=content_type, headers=headers)
         
     except HTTPException:
