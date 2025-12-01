@@ -204,7 +204,7 @@ async def serve_project_file_with_auth(
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
     
-    return await serve_project_file_internal(client_slug, project_slug, file_path, current_user, project_type_path)
+    return await serve_project_file_internal(client_slug, project_slug, file_path, current_user, project_type_path, request)
 
 async def serve_dashboard_file_internal(
     client_slug: str,
@@ -213,14 +213,15 @@ async def serve_dashboard_file_internal(
     current_user: Dict[str, Any]
 ):
     """Internal function to serve dashboard files with authentication and access control"""
-    return await serve_project_file_internal(client_slug, project_slug, file_path, current_user, "dashboards")
+    return await serve_project_file_internal(client_slug, project_slug, file_path, current_user, "dashboards", request)
 
 async def serve_project_file_internal(
     client_slug: str,
     project_slug: str,
     file_path: str,
     current_user: Dict[str, Any],
-    project_type_path: str = "dashboards"
+    project_type_path: str = "dashboards",
+    request: Request = None
 ):
     """Internal function to serve project files with authentication and access control"""
     
@@ -293,8 +294,24 @@ async def serve_project_file_internal(
         
         # Mobile-friendly headers
         headers = {
-            "Cache-Control": "max-age=0, must-revalidate"
+            "Cache-Control": "max-age=0, must-revalidate",
+            "X-Content-Type-Options": "nosniff"
         }
+        
+        # Allow iframe embedding from Firebase hosting and localhost
+        if request:
+            origin = request.headers.get("origin", "")
+            referer = request.headers.get("referer", "")
+            
+            # Allow Firebase hosting domain and localhost
+            if any(domain in origin or domain in referer for domain in [
+                "ai-kpi-dashboard.web.app", 
+                "localhost", 
+                "127.0.0.1"
+            ]):
+                headers["X-Frame-Options"] = "ALLOWALL"
+            else:
+                headers["X-Frame-Options"] = "SAMEORIGIN"
         
         # For HTML files, inject mobile-friendly meta tags and styles
         if content_type == "text/html" and file_content:
@@ -425,4 +442,4 @@ async def serve_project_index(
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
     
-    return await serve_project_file_internal(client_slug, project_slug, "index.html", current_user, project_type_path)
+    return await serve_project_file_internal(client_slug, project_slug, "index.html", current_user, project_type_path, request)
