@@ -298,19 +298,52 @@ async def serve_project_file_internal(
             "Expires": "0"
         }
         
-        # For HTML files, inject mobile viewport meta tag if not present
+        # For HTML files, inject mobile-friendly meta tags and styles
         if content_type == "text/html" and file_content:
             try:
                 html_content = file_content.decode('utf-8')
-                # Check if viewport meta tag already exists
+                
+                # Mobile-friendly meta tags and styles
+                mobile_enhancements = []
+                
+                # Viewport meta tag
                 if 'name="viewport"' not in html_content.lower():
-                    # Inject viewport meta tag after <head> tag
-                    viewport_meta = '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">'
+                    mobile_enhancements.append('<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">')
+                
+                # Mobile-friendly CSS
+                mobile_css = '''
+                <style>
+                    * { box-sizing: border-box; }
+                    html, body { 
+                        margin: 0; 
+                        padding: 0; 
+                        width: 100%; 
+                        height: 100%; 
+                        overflow-x: auto;
+                        -webkit-text-size-adjust: 100%;
+                        -ms-text-size-adjust: 100%;
+                    }
+                    body { 
+                        min-height: 100vh; 
+                        touch-action: manipulation;
+                    }
+                    @media (max-width: 768px) {
+                        body { font-size: 14px; }
+                        * { max-width: 100%; }
+                    }
+                </style>
+                '''
+                mobile_enhancements.append(mobile_css)
+                
+                # Inject enhancements
+                if mobile_enhancements:
+                    enhancements_html = '\n    '.join(mobile_enhancements)
                     if '<head>' in html_content:
-                        html_content = html_content.replace('<head>', f'<head>\n    {viewport_meta}')
+                        html_content = html_content.replace('<head>', f'<head>\n    {enhancements_html}')
                     elif '<HEAD>' in html_content:
-                        html_content = html_content.replace('<HEAD>', f'<HEAD>\n    {viewport_meta}')
-                    file_content = html_content.encode('utf-8')
+                        html_content = html_content.replace('<HEAD>', f'<HEAD>\n    {enhancements_html}')
+                    
+                file_content = html_content.encode('utf-8')
             except (UnicodeDecodeError, AttributeError):
                 # If decoding fails, serve original content
                 pass
