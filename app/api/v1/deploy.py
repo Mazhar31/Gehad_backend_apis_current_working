@@ -291,11 +291,9 @@ async def serve_project_file_internal(
         if not content_type:
             content_type = "application/octet-stream"
         
-        # Add cache-busting headers to prevent browser caching of updated files
+        # Mobile-friendly headers
         headers = {
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0"
+            "Cache-Control": "max-age=0, must-revalidate"
         }
         
         # For HTML files, inject mobile-friendly meta tags and styles
