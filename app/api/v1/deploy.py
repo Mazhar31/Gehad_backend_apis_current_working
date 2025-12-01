@@ -243,7 +243,14 @@ async def serve_dashboard_file_internal(
         if not content_type:
             content_type = "application/octet-stream"
         
-        return Response(content=file_content, media_type=content_type)
+        # Add cache-busting headers to prevent browser caching of updated files
+        headers = {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+        
+        return Response(content=file_content, media_type=content_type, headers=headers)
         
     except HTTPException:
         raise
