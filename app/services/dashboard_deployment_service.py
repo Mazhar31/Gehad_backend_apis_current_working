@@ -74,9 +74,10 @@ class DashboardDeploymentService:
                 dashboard_file, storage_path
             )
             
-            # Update project with dashboard URL
+            # Update project with dashboard URL and instance ID
             firebase_db.update('projects', project_id, {
-                'dashboard_url': dashboard_url
+                'dashboard_url': dashboard_url,
+                'dashboard_instance_id': built_files_info['dashboard_instance_id']
             })
             
             # Update deployment record with success
@@ -84,14 +85,16 @@ class DashboardDeploymentService:
                 'deployment_status': 'success',
                 'deployment_url': dashboard_url,
                 'file_count': built_files_info['file_count'],
-                'storage_path': storage_path
+                'storage_path': storage_path,
+                'dashboard_instance_id': built_files_info['dashboard_instance_id']
             })
             
             return {
                 'deployment_id': deployment_id,
                 'dashboard_url': dashboard_url,
                 'status': 'success',
-                'file_count': built_files_info['file_count']
+                'file_count': built_files_info['file_count'],
+                'dashboard_instance_id': built_files_info['dashboard_instance_id']
             }
             
         except Exception as e:
@@ -123,6 +126,10 @@ class DashboardDeploymentService:
             if not project_dir:
                 raise Exception("No package.json found in ZIP file")
             
+            # Generate unique dashboard instance ID and update App.tsx
+            unique_instance_id = f"dashboard-{uuid.uuid4().hex[:12]}"
+            DashboardDeploymentService._update_dashboard_instance_id(project_dir, unique_instance_id)
+            
             # Install dependencies and build
             build_dir = await DashboardDeploymentService._build_react_app(project_dir)
             
@@ -131,7 +138,8 @@ class DashboardDeploymentService:
             
             return {
                 'file_count': file_count,
-                'storage_path': storage_path
+                'storage_path': storage_path,
+                'dashboard_instance_id': unique_instance_id
             }
     
     @staticmethod
@@ -210,6 +218,35 @@ class DashboardDeploymentService:
                 file_count += 1
         
         return file_count
+    
+    @staticmethod
+    def _update_dashboard_instance_id(project_dir: str, instance_id: str) -> None:
+        """Update DASHBOARD_INSTANCE_ID in App.tsx file"""
+        app_tsx_path = os.path.join(project_dir, 'App.tsx')
+        
+        if os.path.exists(app_tsx_path):
+            try:
+                # Read the file
+                with open(app_tsx_path, 'r', encoding='utf-8') as file:
+                    content = file.read()
+                
+                # Replace the DASHBOARD_INSTANCE_ID value
+                import re
+                pattern = r"const DASHBOARD_INSTANCE_ID = '[^']*';"
+                replacement = f"const DASHBOARD_INSTANCE_ID = '{instance_id}';"
+                
+                updated_content = re.sub(pattern, replacement, content)
+                
+                # Write back to file
+                with open(app_tsx_path, 'w', encoding='utf-8') as file:
+                    file.write(updated_content)
+                
+                logger.info(f"Updated DASHBOARD_INSTANCE_ID to {instance_id} in App.tsx")
+                
+            except Exception as e:
+                logger.warning(f"Failed to update DASHBOARD_INSTANCE_ID in App.tsx: {e}")
+        else:
+            logger.warning("App.tsx not found in project directory")
     
     @staticmethod
     def _get_content_type(filename: str) -> str:
@@ -308,9 +345,10 @@ class DashboardDeploymentService:
                 # This would need to be implemented based on your storage structure
                 pass
             
-            # Remove dashboard URL from project
+            # Remove dashboard URL and instance ID from project
             firebase_db.update('projects', project_id, {
-                'dashboard_url': None
+                'dashboard_url': None,
+                'dashboard_instance_id': None
             })
             
             # Delete deployment record

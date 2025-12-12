@@ -28,6 +28,7 @@ class DashboardDeployment(Base):
     deployed_by = Column(String(50), ForeignKey("admins.id"), nullable=False)
     deployment_status = Column(Enum(DeploymentStatus), default=DeploymentStatus.PENDING)
     deployed_at = Column(DateTime(timezone=True), server_default=func.now())
+    dashboard_instance_id = Column(String(100))
 
     # Relationships
     project = relationship("Project", back_populates="dashboard_deployments")

@@ -248,7 +248,6 @@ async def serve_project_file_internal(
         
         if not file_content:
             # Try alternative project slug (check if there's a mismatch)
-            from app.core.firebase_db import firebase_db
             projects = firebase_db.get_all('projects')
             clients = firebase_db.get_all('clients')
             
@@ -256,9 +255,9 @@ async def serve_project_file_internal(
             actual_client = None
             actual_project = None
             
-            for client in clients:
-                if DashboardDeploymentService._sanitize_name(client['company']) == client_slug:
-                    actual_client = client
+            for client_item in clients:
+                if DashboardDeploymentService._sanitize_name(client_item['company']) == client_slug:
+                    actual_client = client_item
                     break
             
             if actual_client:
