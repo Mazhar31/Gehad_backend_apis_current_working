@@ -88,18 +88,27 @@ async def get_current_user_info(
 @router.post("/forgot-password", response_model=ResponseModel)
 async def forgot_password(email: str = Query(...)):
     """Send password reset email"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"🔍 Password reset requested for email: {email}")
+    
     # Check if user exists (admin or regular user)
     admin = firebase_db.get_admin_by_email(email)
     user = firebase_db.get_user_by_email(email) if not admin else None
     
     if not admin and not user:
+        logger.info(f"❌ Email {email} not found in database")
         # Don't reveal if email exists or not for security
         return ResponseModel(
             message="If the email exists, a password reset link has been sent"
         )
     
+    logger.info(f"✅ Email {email} found, user type: {'admin' if admin else 'user'}")
+    
     # Generate reset token
     reset_token = secrets.token_urlsafe(32)
+    logger.info(f"🔑 Generated reset token: {reset_token[:10]}...")
     
     # Store reset token in Firebase
     reset_data = {
@@ -110,16 +119,64 @@ async def forgot_password(email: str = Query(...)):
         "expires_at": (datetime.utcnow() + timedelta(hours=1)).isoformat()
     }
     
-    firebase_db.create('password_resets', reset_data, f"reset-{uuid.uuid4().hex[:8]}")
+    reset_id = f"reset-{uuid.uuid4().hex[:8]}"
+    firebase_db.create('password_resets', reset_data, reset_id)
+    logger.info(f"💾 Reset token stored in Firebase with ID: {reset_id}")
     
     # Send email
-    reset_url = f"https://ai-kpi-dashboard.web.app/reset-password?token={reset_token}"
-    await send_password_reset_email(email, reset_url)
+    reset_url = f"https://oneqlek.com/reset-password?token={reset_token}"
+    logger.info(f"📧 Attempting to send email to {email} with reset URL: {reset_url}")
+    
+    try:
+        email_sent = await send_password_reset_email(email, reset_url)
+        if email_sent:
+            logger.info(f"✅ Password reset email sent successfully to {email}")
+        else:
+            logger.error(f"❌ Failed to send password reset email to {email}")
+            # Still return success message for security
+    except Exception as e:
+        logger.error(f"💥 Exception while sending email to {email}: {str(e)}")
+        # Still return success message for security
     
     return ResponseModel(
         message="If the email exists, a password reset link has been sent"
     )
 
+@router.post("/test-email", response_model=ResponseModel)
+async def test_email(email: str = Query(...)):
+    """Test email configuration - REMOVE IN PRODUCTION"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"🧪 Testing email configuration by sending to: {email}")
+    
+    try:
+        from app.services.email_service import email_service
+        
+        # Test email service configuration
+        logger.info(f"🔧 SMTP Config - Host: {email_service.smtp_host}, Port: {email_service.smtp_port}, User: {email_service.smtp_user}")
+        
+        # Try to send a test email
+        test_url = "https://oneqlek.com/reset-password?token=test123"
+        result = await send_password_reset_email(email, test_url)
+        
+        if result:
+            logger.info(f"✅ Test email sent successfully to {email}")
+            return ResponseModel(
+                message=f"Test email sent successfully to {email}"
+            )
+        else:
+            logger.error(f"❌ Test email failed to send to {email}")
+            return ResponseModel(
+                message=f"Test email failed to send to {email}"
+            )
+            
+    except Exception as e:
+        logger.error(f"💥 Test email exception: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Email test failed: {str(e)}"
+        )
 @router.post("/reset-password", response_model=ResponseModel)
 async def reset_password(token: str = Query(...), new_password: str = Query(...)):
     """Reset password using token"""

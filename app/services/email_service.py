@@ -15,9 +15,74 @@ class EmailService:
         self.smtp_pass = settings.SMTP_PASS
         self.admin_email = settings.ADMIN_EMAIL
         self.from_email = settings.FROM_EMAIL
+        
+        # Log SMTP configuration on initialization
+        logger.info(f"📧 Email Service initialized with SMTP: {self.smtp_host}:{self.smtp_port}, User: {self.smtp_user}")
+        logger.info(f"🌍 Environment: {settings.ENVIRONMENT}")
+
+    def send_contact_auto_reply(self, name: str, email: str):
+        """Send auto-reply email to user who submitted contact form"""
+        logger.info(f"📤 Attempting to send auto-reply email to {email}")
+        try:
+            # Create message
+            msg = MIMEMultipart()
+            msg['From'] = self.from_email
+            msg['To'] = email
+            msg['Subject'] = "Thank you for contacting OneQlek - We'll be in touch soon!"
+
+            # Email body
+            body = f"""
+            <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                    <p>Hi {name},</p>
+                    
+                    <p>Thanks for reaching out to OneQlek!</p>
+                    
+                    <p>We've received your inquiry about our application's features and pricing. Our team is reviewing your message and will get back to you shortly with the details you need.</p>
+                    
+                    <p>If you have any specific requirements or use cases, feel free to reply to this email and share them with us — it helps us tailor the best option for you.</p>
+                    
+                    <p>Best regards,<br>
+                    Gehad Fouad<br>
+                    OneQlek Team<br>
+                    help@oneqlek.com</p>
+                </div>
+            </body>
+            </html>
+            """
+
+            msg.attach(MIMEText(body, 'html'))
+            logger.info(f"📝 Auto-reply email message created successfully")
+
+            # Send email using SSL for port 465
+            if self.smtp_port == 465:
+                logger.info(f"🔐 Using SSL connection for port 465")
+                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port)
+            else:
+                logger.info(f"🔒 Using STARTTLS connection for port {self.smtp_port}")
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port)
+                server.starttls()
+            
+            logger.info(f"🔑 Attempting SMTP login with user: {self.smtp_user}")
+            server.login(self.smtp_user, self.smtp_pass)
+            logger.info(f"✅ SMTP login successful")
+            
+            text = msg.as_string()
+            server.sendmail(self.from_email, email, text)
+            server.quit()
+            logger.info(f"✅ Auto-reply email sent successfully from {self.from_email} to {email}")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Failed to send auto-reply email: {str(e)}")
+            logger.error(f"🔧 SMTP Config - Host: {self.smtp_host}, Port: {self.smtp_port}, User: {self.smtp_user}")
+            return False
 
     def send_contact_notification(self, name: str, email: str, message: str):
         """Send contact form notification email to admin"""
+        logger.info(f"📤 Attempting to send contact notification email from {email} to {self.admin_email}")
         try:
             # Create message
             msg = MIMEMultipart()
@@ -42,24 +107,52 @@ class EmailService:
             """
 
             msg.attach(MIMEText(body, 'html'))
+            logger.info(f"📝 Email message created successfully")
 
-            # Send email
-            server = smtplib.SMTP(self.smtp_host, self.smtp_port)
-            server.starttls()
+            # Send email using SSL for port 465 or STARTTLS for port 587
+            if self.smtp_port == 465:
+                logger.info(f"🔐 Using SSL connection for port 465")
+                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=30)
+            else:
+                logger.info(f"🔒 Using STARTTLS connection for port {self.smtp_port}")
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=30)
+                server.starttls()
+            
+            logger.info(f"🔑 Attempting SMTP login with user: {self.smtp_user}")
             server.login(self.smtp_user, self.smtp_pass)
+            logger.info(f"✅ SMTP login successful")
+            
             text = msg.as_string()
             server.sendmail(self.from_email, self.admin_email, text)
             server.quit()
+            logger.info(f"✅ Contact notification email sent successfully from {self.from_email} to {self.admin_email}")
 
-            logger.info(f"Contact notification email sent successfully for {email}")
+            # Send auto-reply to the user
+            logger.info(f"🔄 Now sending auto-reply to user: {email}")
+            auto_reply_success = self.send_contact_auto_reply(name, email)
+            if auto_reply_success:
+                logger.info(f"✅ Auto-reply sent successfully to {email}")
+            else:
+                logger.warning(f"⚠️ Auto-reply failed for {email}, but notification was sent to admin")
+
             return True
 
+        except smtplib.SMTPAuthenticationError as e:
+            logger.error(f"🚫 SMTP Authentication failed: {str(e)}")
+            logger.error(f"🔧 This might be due to IP restrictions from Hostinger")
+            logger.error(f"🔧 SMTP Config - Host: {self.smtp_host}, Port: {self.smtp_port}, User: {self.smtp_user}")
+            return False
         except Exception as e:
-            logger.error(f"Failed to send contact notification email: {str(e)}")
+            logger.error(f"❌ Failed to send contact notification email: {str(e)}")
+            logger.error(f"🔧 SMTP Config - Host: {self.smtp_host}, Port: {self.smtp_port}, User: {self.smtp_user}")
             return False
 
     def send_password_reset_email(self, email: str, reset_url: str):
         """Send password reset email"""
+        logger.info(f"📤 Attempting to send password reset email to {email}")
+        logger.info(f"🔗 Reset URL: {reset_url}")
+        logger.info(f"🔧 SMTP Config - Host: {self.smtp_host}, Port: {self.smtp_port}, User: {self.smtp_user}")
+        
         try:
             # Create message
             msg = MIMEMultipart()
@@ -86,24 +179,49 @@ class EmailService:
             """
 
             msg.attach(MIMEText(body, 'html'))
+            logger.info(f"📝 Password reset email message created successfully")
 
-            # Send email
-            server = smtplib.SMTP(self.smtp_host, self.smtp_port)
-            server.starttls()
+            # Send email using SSL for port 465
+            if self.smtp_port == 465:
+                logger.info(f"🔐 Using SSL connection for port 465")
+                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=30)
+            else:
+                logger.info(f"🔒 Using STARTTLS connection for port {self.smtp_port}")
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=30)
+                server.starttls()
+            
+            logger.info(f"🔑 Attempting SMTP login with user: {self.smtp_user}")
             server.login(self.smtp_user, self.smtp_pass)
+            logger.info(f"✅ SMTP login successful")
+            
             text = msg.as_string()
             server.sendmail(self.from_email, email, text)
             server.quit()
+            logger.info(f"✅ Password reset email sent successfully from {self.from_email} to {email}")
 
-            logger.info(f"Password reset email sent successfully to {email}")
             return True
 
+        except smtplib.SMTPAuthenticationError as e:
+            logger.error(f"🚫 SMTP Authentication failed: {str(e)}")
+            logger.error(f"🔧 Check credentials - User: {self.smtp_user}, Host: {self.smtp_host}")
+            logger.error(f"📝 This might be due to wrong password or 2FA enabled on email account")
+            return False
+        except smtplib.SMTPConnectError as e:
+            logger.error(f"🚫 SMTP Connection failed: {str(e)}")
+            logger.error(f"🔧 Check host and port - Host: {self.smtp_host}, Port: {self.smtp_port}")
+            return False
+        except smtplib.SMTPRecipientsRefused as e:
+            logger.error(f"🚫 SMTP Recipients refused: {str(e)}")
+            logger.error(f"📝 Check recipient email address: {email}")
+            return False
         except Exception as e:
-            logger.error(f"Failed to send password reset email: {str(e)}")
+            logger.error(f"❌ Failed to send password reset email: {str(e)}")
+            logger.error(f"🔧 SMTP Config - Host: {self.smtp_host}, Port: {self.smtp_port}, User: {self.smtp_user}")
             return False
 
     def send_invoice_email(self, client_email: str, client_name: str, invoice_data: dict):
         """Send invoice email to client"""
+        logger.info(f"📤 Attempting to send invoice email to {client_email} for invoice {invoice_data.get('invoice_number')}")
         try:
             # Create message
             msg = MIMEMultipart()
@@ -150,20 +268,31 @@ class EmailService:
             """
 
             msg.attach(MIMEText(body, 'html'))
+            logger.info(f"📝 Invoice email message created successfully")
 
-            # Send email
-            server = smtplib.SMTP(self.smtp_host, self.smtp_port)
-            server.starttls()
+            # Send email using SSL for port 465
+            if self.smtp_port == 465:
+                logger.info(f"🔐 Using SSL connection for port 465")
+                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port)
+            else:
+                logger.info(f"🔒 Using STARTTLS connection for port {self.smtp_port}")
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port)
+                server.starttls()
+            
+            logger.info(f"🔑 Attempting SMTP login with user: {self.smtp_user}")
             server.login(self.smtp_user, self.smtp_pass)
+            logger.info(f"✅ SMTP login successful")
+            
             text = msg.as_string()
             server.sendmail(self.from_email, client_email, text)
             server.quit()
+            logger.info(f"✅ Invoice email sent successfully from {self.from_email} to {client_email}")
 
-            logger.info(f"Invoice email sent successfully to {client_email}")
             return True
 
         except Exception as e:
-            logger.error(f"Failed to send invoice email: {str(e)}")
+            logger.error(f"❌ Failed to send invoice email: {str(e)}")
+            logger.error(f"🔧 SMTP Config - Host: {self.smtp_host}, Port: {self.smtp_port}, User: {self.smtp_user}")
             return False
 
 # Create global instance
